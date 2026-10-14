@@ -1,0 +1,105 @@
+---
+title: "Data Challenge: Tidy Who Dataset"
+author: "Claudio Desideri"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE, message = FALSE, warning = FALSE)
+```
+
+First let's load the WHO dataset from the tidyr package.
+
+```{r}
+library(tidyverse)
+
+#View(tidyr::who)
+```
+
+# Step 1: gather
+Here we drop redundant columns regarding country (iso2, iso3) and transform the table to be more long than wide.
+
+```{r}
+who1 <- who %>%
+  pivot_longer(!(country:year), names_to = "cases", values_to = "counts", values_drop_na = TRUE)
+
+who1
+```
+
+# Step 2: replace
+
+```{r}
+who2 <- who1 %>% 
+  mutate(key = stringr::str_replace(cases, "newrel", "new_rel"))
+
+slice(who2, 242:246)
+```
+# Step 3: separate
+
+Let's start with separating the cases column with 3 different variables "new", "type" and "sexage".
+
+```{r}
+who3 <- who2 %>% 
+  separate(key, into = c("new", "type", "sexage"), sep = "_")
+who3
+```
+Now separate seaxage into "sex" and "age".
+
+```{r}
+who4 <- who3 %>% 
+  separate(sexage, into = c("sex", "age"), sep = 1)
+who4
+```
+Now let's separate age into "age_low" and "age_high".
+
+```{r}
+who5 <- who4 %>% 
+  mutate(age = stringr::str_replace(age, "014", "0014")) %>%
+  mutate(age = stringr::str_replace(age, "65", "65100")) %>%
+  separate(age, into = c("age_low", "age_high"), sep = 2)
+who5
+```
+
+```{r}
+# check that new is constant
+who5 %>% count(new)
+
+# drop redundant columns
+who6 <- who5 %>% 
+  select(-new, -iso2, -iso3)
+who6
+```
+
+
+# As a whole complete pipe
+
+This is the whole source just rewritten with the pipe operator (|>)
+```{r}
+who |>
+  pivot_longer(!(country:year), names_to = "cases", values_to = "counts", values_drop_na = TRUE) |>
+  mutate(key = stringr::str_replace(cases, "newrel", "new_rel")) |>
+  separate(key, into = c("new", "type", "sexage"), sep = "_") |>
+  separate(sexage, into = c("sex", "age"), sep = 1) |>
+  mutate(age = stringr::str_replace(age, "014", "0014")) |>
+  mutate(age = stringr::str_replace(age, "65", "65100")) |>
+  separate(age, into = c("age_low", "age_high"), sep = 2) |>
+  select(-new, -iso2, -iso3)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
