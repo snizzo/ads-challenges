@@ -1,0 +1,304 @@
+---
+title: "EloMethod"
+author: "Claudio Desideri"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Introduction
+
+For this data challenge we will analyze the Chess dataset you can find [here](https://www.kaggle.com/c/chess/data) and answer some question as provided by the data challenge itself.
+
+Let's load the right libraries.
+```{r}
+library(tidyverse)
+library(dplyr)
+library(readr)
+library(ggplot2)
+```
+
+# 0 . Downloading the data
+
+Let's download the data and save it locally.
+
+```{r}
+# save folder local path
+savePath = "data"
+dataUrl = "https://users.dimi.uniud.it/~massimo.franceschet/ns/plugandplay/challenges/chess/data.csv"
+
+if (!file.exists(savePath)){
+  dir.create(savePath)
+}
+
+# download data
+data_file <- file.path(savePath, "data.csv")
+
+if (!file.exists(data_file)) {
+  download.file(dataUrl, destfile = data_file, mode = "wb")
+}
+```
+
+Now we read and parse the dataset.
+
+```{r}
+chess_data <- read_csv(data_file)
+head(chess_data)
+```
+
+# 1 . The White Move First Advantage
+The first question is: Has the White an advantage over the Black, that is, is there a first-mover advantage?
+
+It is known that in competitive chess playing as White is an advantage so let's try to prove it with the data. Filtering the data by Score == 1 (white wins) and Score == 0 (black wins) and counting we obtain the total number of games won by White-starting players and Black-starting players.
+
+```{r}
+white_wins = chess_data |> filter(Score == 1) |> count() |> pull()
+black_wins = chess_data |> filter(Score == 0) |> count() |> pull()
+
+wb_test <- binom.test(white_wins, white_wins + black_wins, p = 0.5)
+wb_test
+```
+
+This shows a white player advantage with with a probability of 58% of winning the game, assuming the black/white choice of play is distributed completely random in all the games.
+
+# 2 . Function computing the player point rating
+
+We have to calculate the points for every win (1 point) if the player is White, then if the player is Black.
+
+```{r}
+# all points made by players as white
+white_points = chess_data |> filter(Score == 1) |> arrange(White) |> group_by(Player = White)
+# all points made by players as black
+black_points = chess_data |> filter(Score == 0) |> arrange(Black) |> group_by(Player = Black)
+# count all the points by player (can be black or white, not important)
+points = bind_rows(white_points, black_points) |> summarise(Points = n())
+
+# all points in draws
+draw_points_white = chess_data |> filter(Score == 0.5) |> arrange(White) |> group_by(Player = White)
+draw_points_black = chess_data |> filter(Score == 0.5) |> arrange(Black) |> group_by(Player = Black)
+draw_points = bind_rows(draw_points_white, draw_points_black) |> summarise(Points = n() / 2)
+
+# assuming a player can't play against himself
+games_white = chess_data |> group_by(Player = White) |> summarise(Games = n())
+games_black = chess_data |> group_by(Player = Black) |> summarise(Games = n())
+all_games = bind_rows(games_white, games_black) |> group_by(Player) |> summarise(NGames = sum(Games, na.rm = TRUE))
+
+total_points = bind_rows(points, draw_points) |> group_by(Player) |> summarise(Points = sum(Points, na.rm = TRUE))
+```
+
+Now let's plot the data in order to have a graphical representation.
+
+```{r}
+ggplot(total_points, aes(x = Points)) +
+  geom_histogram(bins = 100, fill = "steelblue", color = "white") +
+  labs(title = "Distribution of Player Point Ratings",
+       x = "Total Points",
+       y = "Frequency")
+```
+
+We can observe that the vast majority of the players have low scores, while a very few players have greater scores.
+
+In many sports there the distribution follows a power law, and this histogram shows the same behaviour.
+
+```{r}
+summary(total_points$Points)
+```
+We can also notice:
+
+* Most of the players have achieved a combination of wins and draws that gave them 3.5 points
+* The strongest player earned a total of 167.5 points
+
+# 3 . Formal proof of sum of all player rating being 0
+Assume:
+
+- $s_{i,j} + s_{j,i} = 1$
+- $\mu_{i,j} + \mu_{j,i} =1$
+
+We know that Elo is calculated with:
+
+$$
+\begin{array}{lll}
+r_{i} & \leftarrow & r_i + \kappa (s_{i,j} - \mu_{i,j}) 
+\\
+r_j & \leftarrow & r_j + \kappa (s_{j,i} - \mu_{j,i})
+\end{array}
+$$
+
+Therefore we can rewrite the updated $r_j$ score as:
+$$
+\begin{array}{lll}
+& r_j + \kappa ((1-s_{i,j}) - (1-\mu_{i,j})) &=\\
+=& r_j + \kappa (1-s_{i,j}-1+\mu_{i,j}) &=\\
+=& r_j + \kappa (\mu_{i,j} - s_{i,j})
+\end{array}
+$$
+If we sum together $r_i$ and $r_j$, assuming the starting scores are $0$ and dividing by $\kappa$, we obtain:
+
+$$
+(s_{i,j} - \mu_{i,j}) + (\mu_{i,j}-s_{i,j}) = 0
+$$
+
+So the sum of all player ratings is always 0.
+
+# 4 . Calculate the players' Elo rating
+
+Every player starts with an Elo of value $0$.
+
+```{r}
+players_ids = sort(unique(c(chess_data$White, chess_data$Black)))
+
+players_elo = tibble(
+  Player = players_ids,
+  Elo = 0
+)
+```
+
+Now we define a function that computes the expected value $\mu_{i,j}$:
+
+```{r}
+# this function calculates the expected value for p1
+# and therefore also for p2 being it 1-mu1
+calc_expected_score <- function(r1, r2, c){
+  
+  expected = 1 / (1 + 10^( (r2-r1)/c ))
+  return(expected)
+}
+```
+
+And the function that calculates both the elos, since from every game we must calculate and update both the new elos for both white and black player.
+```{r}
+calc_elo_rating <- function(r1, r2, outcome1, expected, k){
+  newelo1 = r1 + k*(outcome1-expected)
+  newelo2 = r2 + k*( (1-outcome1) - (1-expected) )
+  
+  return( c(newelo1, newelo2) )
+}
+```
+
+Now let's simulate all the games in order to calculate every Elo of every player. We have to do this iteratively due to the Elo formula depending on the past Elo scores.
+```{r}
+# convert to vector
+elo_vector <- setNames(players_elo$Elo, players_elo$Player)
+
+for (i in 1:nrow(chess_data)) {
+  p1 = chess_data$White[i]
+  p2 = chess_data$Black[i]
+  
+  outcome = chess_data$Score[i]
+  
+  # get old scores
+  scorep1 <- elo_vector[as.character(p1)]
+  scorep2 <- elo_vector[as.character(p2)]
+  
+  expected = calc_expected_score(scorep1, scorep2, 400)
+  
+  newelos = calc_elo_rating(scorep1, scorep2, outcome, expected, 25)
+  
+  # update ratings
+  #print(newelos[1])
+  #print(newelos[2])
+  elo_vector[as.character(p1)] <- newelos[1]
+  elo_vector[as.character(p2)] <- newelos[2]
+}
+
+# convert back to tibble
+players_elo <- tibble(Player = as.numeric(names(elo_vector)), Elo = as.numeric(elo_vector))
+players_elo
+```
+
+Now let's plot the Elo distribution.
+
+```{r}
+ggplot(players_elo, aes(x = Elo)) +
+  geom_histogram(bins = 100, fill = "steelblue", color = "white") +
+  labs(title = "Distribution of Player Elo Ratings",
+       x = "Elo Rating",
+       y = "Frequency")
+```
+
+```{r}
+summary(players_elo$Elo)
+```
+
+We can observe Elo to be distributed around the median of -6 (zero means likely the most "average" player in the Elo scale usually) with more rare, though not zero, expert players in the right tail between 100 and a maximum of 326 and unskilled players mostly between -50 and a minimum of -146.
+
+It is different from the point rating mainly because the elo rating is being modified both positively and negatively hovering around the 0 while the point rating can only grow from a starting point of 0.
+
+Also, the calculated mean of all the Elo ratings is 0.000, so we have also **verified the 0-sum property**.
+
+# 5 . Correlation between points and elo rating
+
+Is there a correlation between points and elo rating? Let's find out by plotting the data. First, let's join the points and elo table together based on Player.
+
+```{r}
+complete_data = players_elo |> left_join(total_points, by = "Player") |> mutate(Points = coalesce(Points, 0)) |> left_join(all_games, by = "Player") 
+complete_data
+```
+
+Now let's draw the actual plot.
+
+```{r}
+ggplot(complete_data, aes(x = Points,
+                   y = Elo
+                   ) ) +
+        geom_point(colour = "black", aes(size = NGames,
+                   alpha = NGames)) +
+        scale_alpha(range = c(0, 0.5), transform = "log10") +
+        scale_size(range = c(0.1, 3)) +
+        geom_smooth(method = "loess", color = "red") +
+        labs(x = "Points", y = "Elo Rating") +
+        theme_minimal()+
+        theme(legend.position="none")
+```
+
+```{r}
+cor.test(complete_data$Points, complete_data$Elo)
+cor(complete_data$Points, complete_data$Elo, method = "spearman")
+```
+
+We can observe **there actually is a positive correlation** between Points earned by the Player and the Elo rating, with most of the players with $>100$ points having all $>100$ elo rating.
+
+# 6a . Correlation between number of games and Elo rating
+
+Now let's inspect if there is a correlation between the number of games played and the Elo rating.
+
+```{r}
+ggplot(complete_data, aes(x = NGames,
+                   y = Elo
+                   ) ) +
+        geom_point(colour = "black", alpha = 0.5) +
+        geom_smooth(method = "loess", color = "red") +
+        labs(x = "Games Played", y = "Elo Rating") +
+        theme_minimal()+
+        theme(legend.position="none")
+```
+
+```{r}
+cor.test(complete_data$Elo, complete_data$NGames)
+cor(complete_data$Elo, complete_data$NGames, method = "spearman")
+```
+
+Finally we can observe **there is a correlation** between the number of games played (NGames) and the Elo score.
+
+# 6b . Correlation between number of games and Points
+
+Now let's inspect if there is a correlation between the number of games played and the points earned.
+```{r}
+ggplot(complete_data, aes(x = NGames,
+                   y = Points
+                   ) ) +
+        geom_point(colour = "black", alpha = 0.5) +
+        geom_smooth(method = "loess", color = "red") +
+        labs(x = "Games Played", y = "Points") +
+        theme_minimal()+
+        theme(legend.position="none")
+```
+
+```{r}
+cor.test(complete_data$Points, complete_data$NGames)
+cor(complete_data$Points, complete_data$NGames, method = "spearman")
+```
+
+We can conclude **there is a very strong correlation** between points earned and games played. This is intuitively right because only who plays has a probability to earn points and point are not earned negatively, therefore the more games a player plays, the more points it's probable he/she will win.
