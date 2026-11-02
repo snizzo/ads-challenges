@@ -1,0 +1,124 @@
+---
+title: "Concentration of S&P 500 index"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE, echo = TRUE, message = FALSE)
+```
+
+In this data challege we study how concentrated the S&P 500 is among its constituent companies. 
+
+1. The S&P 500 (Standard & Poor's 500) is a stock market index that tracks the performance of 500 of the largest publicly traded companies in the United States.
+2. It covers roughly 80% of the total value of the U.S. stock market.
+3. It is a market-capitalization-weighted index. Larger companies have a much bigger impact on its value than smaller components
+
+
+We will use:
+
+```{r}
+library(tidyquant)    #retrieve the S&P 500 constituents and weights
+library(tidyverse)    #manipulate and visualize the data
+library(ineq)         #calculate the Lorenz curve and Gini coefficient
+```
+
+# Questions
+
+1. How unequal are the company weights in the S&P 500?
+2. How much of the index is represented by its largest companies?
+3. What does the Lorenz curve tell us about concentration?
+4. What is the Gini coefficient of the S&P 500 weights?
+
+# Getting the data
+First, we need to get the data from the S&P 500 index.
+
+```{r}
+# create data folder if there is none
+if(!dir.exists("data")){
+  dir.create("data")
+}
+
+if (!file.exists("data/sp500.csv")){
+# get sp500 index data
+  sp500 = tq_index("SP500")
+  write_csv(sp500, "data/sp500.csv")
+}
+
+sp500 = read_csv("data/sp500.csv")
+sp500
+```
+
+This includes a bit more than 500 companies (505) because there are titles associated with the same company (for example GOOGL and GOOG).
+
+# Unequality
+
+We want to measure how unequal are the company weights in the top 500 companies by market cap (SP500 index). Let's start by creating a tibble with the cumulative share and plot it.
+
+```{r}
+# cumulative data
+sp500_ranked = sp500 |>
+  arrange(desc(weight)) |>
+  mutate(
+    rank = row_number(),
+    cumulative_weight = cumsum(weight)
+  )
+
+ggplot(sp500_ranked, aes(x = rank, y = cumulative_weight)) +
+  geom_line(color = "steelblue", linewidth = 1) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    x = "Rank of Company (Bigger -> Smaller)",
+    y = "Cumulative Share of Total Index"
+  ) +
+  theme_minimal()
+```
+
+Visually, we can see that a small share of big companies at the top ranking are holding a big share of the SP500 index. Let's see it in numbers by calculating the share for the top 5, 10 and 20 respectively.
+
+```{r}
+top5 = sp500_ranked |> filter(rank <= 5)
+top10 = sp500_ranked |> filter(rank <= 10)
+top20 = sp500_ranked |> filter(rank <= 20)
+sum(top5$weight)
+sum(top10$weight)
+sum(top20$weight)
+```
+
+We can observe that:
+
+ - The top 5 companies hold ~$28\%$ of the shares.
+ - The top 10 companies hold ~$38\%$ of the shares.
+ - The top 20 companies hold ~$49\%$ of the shares.
+
+# Lorenz curve
+To better see the unequality let's draw the lorenz curve.
+
+```{r}
+ldata = Lc(sp500$weight)
+df_ldata = data.frame(p = ldata$p, L = ldata$L)
+
+
+ggplot(df_ldata, aes(x = p, y = L)) +
+  # lorentz curve
+  geom_line(color = "steelblue", linewidth = 1) +
+  # diagonal
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "gray50") +
+  labs(
+    title = "Lorenz Curve of SP 500 Weights",
+    x = "Cumulative Share of Companies",
+    y = "Cumulative Share of Total Weights"
+  ) +
+  theme_minimal()
+```
+
+As we can see, the curve indicates a **pretty unequeal distribution** of the shares with few companies holding a lot of the total shares of weights.
+
+# Gini coefficient
+
+To quantify the unequality let's calculate the Gini coeffcient.
+
+```{r}
+Gini(sp500$weight)
+```
+
+Being $0$ the complete equality and 1 the complete unequality, a value of ~$0.71$ shows a **marked unequality**.
