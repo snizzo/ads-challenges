@@ -1,5 +1,6 @@
 ---
 title: "Concentration of S&P 500 index"
+author: "Claudio Desideri"
 output: html_document
 ---
 
