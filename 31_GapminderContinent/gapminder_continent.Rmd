@@ -1,0 +1,84 @@
+---
+title: "How life expectancy change over time for each continent?"
+author: "Claudio Desideri"
+output:
+  html_document:
+    theme: spacelab
+    highlight: pygments
+---
+
+```{r setup, include=FALSE}
+# cache results
+knitr::opts_chunk$set(cache=TRUE, message=FALSE)
+```
+
+Life expectancy for a country is the mean length of life over people of a country. Using variables life expectancy and population of a country:
+
+1.  derive a formula to compute life expectancy of a continent (a group of countries)
+2.  plot how life expectancy changed over time for each continent
+3.  do the same for the whole planet
+
+
+# Loading libraries and gapminder dataset
+
+Let's load the relevant libraries.
+
+```{r}
+library("gapminder")
+library(tidyverse)
+```
+
+# Computing life expectancy
+
+We're going to perform some inspections on the dataset in order to understand how to build a model. First let's calculate for every year the expected life expectancy per continent using a weighted average.
+
+```{r}
+per_continents = gapminder |> group_by(year, continent) |> summarise( life_exp = sum(lifeExp * pop) / sum(pop), pop = sum(pop), .groups = "drop")
+```
+
+The formula used to calculate the life expectancy is:
+
+$$
+\text{lifeExp}_{c,t} = \frac{\sum_{i \in c} \text{lifeExp}_{i,t} \cdot \text{pop}_{i,t}}{\sum_{i \in c} \text{pop}_{i,t}}
+$$
+In short it's the mean of the life expectancy of every country weighted by the population, because every citized count as 1.
+
+Now let's plot the data.
+
+```{r}
+per_continents |> 
+  ggplot(aes(x = year, y = life_exp, color = continent)) +
+  geom_line() +
+  geom_point(aes(size = pop/10^9), alpha = 0.5) +
+  labs(title = "Life Expectancy Trends by Continent",
+       x = "Year",
+       y = "Life expectancy",
+       size = "Population (billions)")
+```
+
+As we can see we have intuitively found out that every continent follows a more less straight line, with the exception of Asia in the late '50s, early '60s and Africa, that basically stops growing in the '90s. Also asia has experienced a great growth in absolute population.
+
+# The whole planet
+
+Let's craft the data for the whole planet, grouping by year, with the same weighted average used for continents.
+
+```{r}
+whole_planet = per_continents |> group_by(year) |> summarise(life_exp = sum(life_exp * pop) / sum(pop), pop = sum(pop))
+```
+
+Now let's plot it to show it graphically.
+
+```{r}
+whole_planet |> ggplot(aes(x = year, y = life_exp))+
+  geom_line() + 
+  geom_point(aes(size = pop/10^9), alpha = 0.5) +
+  labs(
+    title = "Life Expectancy Trends For The Whole World",
+    x = "Year",
+    y = "Life expectancy",
+    size = "Population (billions)"
+  )
+```
+
+We can clearly see that the life expectancy is heavily influenced by the asian trend between '50s and '60s, due to Asia having a bigger population than any other continent. Apart from that, the trend has been increasing with time, with the african plateau not heavily influencing the whole world trend after the 90s.
+
