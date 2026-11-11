@@ -1,0 +1,218 @@
+---
+title: "Diamonds quality"
+author: "Claudio Desideri"
+output:
+  html_document:
+    theme: spacelab
+    highlight: pygments
+---
+
+```{r setup, include=FALSE}
+# cache results
+knitr::opts_chunk$set(cache=TRUE, message=FALSE)
+```
+In this data challenge we explore the qualities of diamonds and their association with price using the `ggplot2::diamonds` dataset:
+
+1. First of all, observe that low quality diamonds (with respect to cut, color and clarity) are more expensive.
+2. Using models, find an explanation and solve the apparent paradox.
+
+Recall that:
+
+* best cut is Ideal, worst is Fair
+* best color is D, worst is J
+* best clarity is IF, worst is I1
+
+# Import libraries
+
+Let's import all the useful libraries.
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+```
+
+# About diamonds and their metrics
+
+The diamonds dataset gives us a set of metrics useful to rank diamonds in "better" and "worse", that is reflected on the price. So let's understand what actual metrics mean:
+
+ - `carat`: measure the **weight** of the diamond. The heavier, the better, the pricier.
+ - `cut`: how the diamond **interacts with light**. **Ideal** is the best, **Fair** is the worst.
+ - `color`: measure how much is a diamond **colored**. **D** is completely colorless (better), *J* is colored (worse)
+ - `clarity`: measure the **absence of internal flaws**. With **IF**(internally flawless) being the best and **I1**(large flaws) being the worst
+ 
+So the apparent paradox is that high quality diamonds (cut, color and clarity) costs less. Let's inspect this.
+
+# Low quality diamonds are generally more expensive
+
+Let's inspect the fact that low quality diamonds (e.g. Fair cut, J colored, I1) are generally more expensive than high quality diamonds. Here we inspect mean and median price for cut, color and clarity.
+
+```{r}
+bycut_info = ggplot2::diamonds |> 
+  group_by(cut) |> 
+  summarise(
+    n = n(),
+    mean_price = mean(price),
+    median_price = median(price),
+    mean_carat = mean(carat),
+    median_carat = median(carat),
+    .groups = "drop"
+  )
+
+bycolor_info = ggplot2::diamonds |> 
+  group_by(color) |> 
+  summarise(
+    n = n(),
+    mean_price = mean(price),
+    median_price = median(price),
+    mean_carat = mean(carat),
+    median_carat = median(carat),
+    .groups = "drop"
+  )
+
+byclarity_info = ggplot2::diamonds |> 
+  group_by(clarity) |> 
+  summarise(
+    n = n(),
+    mean_price = mean(price),
+    median_price = median(price),
+    mean_carat = mean(carat),
+    median_carat = median(carat),
+    .groups = "drop"
+  )
+
+```
+
+Let's see the data and plot it to easily compare it visually.
+
+```{r}
+bycut_info
+bycut_info |> 
+  pivot_longer(cols = c(mean_price, median_price), names_to = "stat_type", values_to = "price_value") |> 
+  ggplot(aes(x = cut, y = price_value, fill = stat_type)) + 
+  geom_col(position = "dodge")
+
+bycolor_info
+bycolor_info |> 
+  pivot_longer(cols = c(mean_price, median_price), names_to = "stat_type", values_to = "price_value") |> 
+  ggplot(aes(x = color, y = price_value, fill = stat_type)) + 
+  geom_col(position = "dodge")
+
+byclarity_info
+byclarity_info |> 
+  pivot_longer(cols = c(mean_price, median_price), names_to = "stat_type", values_to = "price_value") |> 
+  ggplot(aes(x = clarity, y = price_value, fill = stat_type)) + 
+  geom_col(position = "dodge")
+```
+
+We can see that **low quality diamonds have generally a higher mean and median price**. So the counter intuitive paradox is confirmed: low quality diamonds are priced higher. And what about weight (carat)?
+
+```{r}
+bycut_info |> 
+  pivot_longer(cols = c(mean_carat, median_carat), names_to = "stat_type", values_to = "carat_value") |> 
+  ggplot(aes(x = cut, y = carat_value, fill = stat_type)) + 
+  geom_col(position = "dodge")
+
+bycolor_info |> 
+  pivot_longer(cols = c(mean_carat, median_carat), names_to = "stat_type", values_to = "carat_value") |> 
+  ggplot(aes(x = color, y = carat_value, fill = stat_type)) + 
+  geom_col(position = "dodge")
+
+byclarity_info |> 
+  pivot_longer(cols = c(mean_carat, median_carat), names_to = "stat_type", values_to = "carat_value") |> 
+  ggplot(aes(x = clarity, y = carat_value, fill = stat_type)) + 
+  geom_col(position = "dodge")
+```
+
+We can see that **the poorly cut, more coloured and impure diamonds are generally the ones with the biggest carats** therefore weight and size.
+
+# Inspecting the price paradox
+
+So now we have to inspect the `carat` relation to the price. Let's visually inspect the data in order to have an idea.
+
+```{r}
+ggplot(diamonds, aes(x = carat, y = price, color = color)) + geom_point(alpha=0.5, size = 0.4)
+ggplot(diamonds, aes(x = carat, y = price, color = cut)) + geom_point(alpha=0.5, size = 0.4)
+ggplot(diamonds, aes(x = carat, y = price, color = clarity)) + geom_point(alpha=0.5, size = 0.4)
+```
+
+Visually we can see that the paradox is getting a bit more understandable. Comparing diamonds of the same weight (carat) we see all the other 3 quality metrics have a positive impact on price. So diamonds of higher quality (cut, color, clarity) **at the same carat** actually have a higher price.
+
+Also we can notice that **bigger diamonds are usually of lower quality** again. So how does carat correlate with price?
+
+# Building a linear model
+
+Let's see if there is a linear correlation between price and carat and compare it with a linear model that ignores carat.
+
+```{r}
+d <- diamonds |>
+  mutate(
+    cut     = factor(cut, ordered = FALSE),
+    clarity = factor(clarity, ordered = FALSE),
+    color   = fct_rev(factor(color, ordered = FALSE))
+  )
+
+lmplot_naive <- lm(log(price) ~ cut + color + clarity, data = d)
+lmplot_full  <- lm(log(price) ~ log(carat) + cut + color + clarity, data = d)
+
+# plot predictions against actual values
+ggplot(diamonds, aes(x = predict(lmplot_full), y = log(price))) +
+  geom_point(alpha = 0.3, size = 0.2) +
+  geom_abline(slope = 1, intercept = 0, color = "red") +
+  labs(
+    title = "With Carat",
+    x = "Predicted Log Price",
+    y = "Actual Log Price"
+  )
+```
+
+There is a linear correlation with the price, so the model describes the data well.
+
+
+```{r}
+# plotting residuals against predicted values
+ggplot(broom::augment(lmplot_full), aes(x = .resid)) +
+  geom_histogram(bins = 50, fill = "steelblue", color = "white") +
+  labs(
+    title = "Distribution of Residuals",
+    x = "Residuals",
+    y = "Frequency"
+  )
+
+ggplot(broom::augment(lmplot_full), aes(x = .fitted, y = .resid)) +
+  geom_point(alpha = 0.3, size = 0.2) +
+  geom_hline(yintercept = 0, color = "red") +
+  labs(
+    title = "Residuals vs Fitted",
+    x = "Fitted values (log price)",
+    y = "Residuals"
+  )
+```
+
+The residuals are distributed as expected, near the $0$, so our model is accurate.
+
+Let's compare it with the model not taking into account the carat.
+
+```{r}
+bind_rows(
+  broom::tidy(lmplot_naive) |> mutate(model = "without carat"),
+  broom::tidy(lmplot_full) |> mutate(model = "with carat")
+) |>
+  filter(term != "(Intercept)", term != "log(carat)") |>
+  ggplot(aes(x = estimate, y = term, color = model)) +
+  geom_point(size = 2) +
+  geom_vline(xintercept = 0, linetype = "dashed")
+```
+
+We can see that the estimated prices of the model respect to the worst quality trait (I1, Fine, J) that ignores the carat generally go down with the quality, while the model that considers also carat gives an estimate of the price that increases with quality.
+
+Finally let's see that carat is a deep explanatory factor with the $R^2$.
+
+```{r}
+summary(lm(log(price) ~ log(carat), data = d))$r.squared
+summary(lmplot_naive)$r.squared
+summary(lmplot_full)$r.squared
+```
+
+# Conclusions
+
+Apparently the low quality diamonds are sold at a higher price than high quality ones. This is because the carats (weight) is the most influential and confounding metric and usually bigger diamonds are of lower quality, maybe due to the actual difficulty for example in finding a big diamond in nature that has no imperfections. So in order to have a good model we have to take into account the diamonds' carats.
