@@ -81,7 +81,7 @@ I'll create a visual expression of the data in order to communicate there is glo
 
 The lines are drawn in segments, one for each month, with a different color depending on the temperature anomaly and a slightly different y again depending on the anomaly.
 
-I've drawn lines with a high width (25.6) and a low alpha (0.18) in order to fill the image and overlap the values a bit, expressing the anomaly and temperature as a continuous value that influence the whole environment all the time.
+I've drawn lines with a high width (25.6) and a low alpha (0.18) in order to fill the image and overlap the values a bit, expressing the anomaly and temperature as a continuous value that influence the whole environment all the time. The data has been smoothed a bit in order to have a more smoothed drawing.
 
 I like the resulting rectangle that resembles oil painting and impressionism a bit, an artistic movement that used colors and shades to express feelings rather than real photorealistic scenes. My main goal was to make the viewer feel the danger we're running into by the damage of global warming.
 
