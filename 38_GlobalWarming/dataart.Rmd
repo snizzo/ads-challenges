@@ -111,3 +111,24 @@ ggsave("global_warming_waves.png", p, width = 14, height = 10, dpi = 300)
 
 p
 ```
+
+# Cropped version
+
+Here is a cropped version.
+
+```{r}
+pc <- ggplot(arrange(temp, Year), aes(x = month, y = Year + anomaly * 20, color = anomaly)) +
+  geom_line(aes(group = Year), linewidth = 25.6, alpha = 0.18) +
+  scale_color_gradient2(low = "blue", mid = "gray85", high = "red",
+                        midpoint = 0, name = "Anomaly (°C)") +
+  labs(x = "", y = "",
+       title = "",
+       subtitle = "") +
+  scale_y_reverse() +
+  theme_minimal(base_size = 10) +
+  theme(panel.grid = element_blank(),
+        legend.position = "none",
+        axis.text = element_blank())
+ggsave("global_warming_waves_cropped.png", pc, width = 10, height = 10, dpi = 300)
+pc
+```
