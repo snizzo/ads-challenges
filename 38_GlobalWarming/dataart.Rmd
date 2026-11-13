@@ -1,0 +1,112 @@
+---
+title: "Data Art Challenge: Global warming through data"
+author: "Claudio Desideri"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE, message = FALSE)
+```
+
+# The Dataset
+
+Dataset: [Download NASA GISTEMP CSV](https://data.giss.nasa.gov/gistemp/tabledata_v4/GLB.Ts+dSST.csv)
+
+Let's prepare it like we have seen in the `nasa.Rmd` part during the course.
+
+```{r}
+library(tidyverse)
+
+load_or_save_data <- function(data, filename, folder = "data") {
+  if (!dir.exists(folder)) {
+    dir.create(folder)
+  }
+  
+  file_path <- file.path(folder, filename)
+  
+  if (file.exists(file_path)) {
+    message("Loading dataset from: ", file_path)
+    return(read_csv(
+  url,
+  skip = 1,
+  na = c("***", "****"),
+  show_col_types = FALSE
+))
+  } else {
+    message("Saving dataset to: ", file_path)
+    write_csv(data, file_path)
+    return(data)
+  }
+}
+
+# URL for the NASA GISTEMP dataset
+url <- "https://data.giss.nasa.gov/gistemp/tabledata_v4/GLB.Ts+dSST.csv"
+
+# load or save the data
+nasa_data <- read_csv(
+  url,
+  skip = 1,
+  na = c("***", "****"),
+  show_col_types = FALSE
+) |>
+  load_or_save_data("GLB.Ts+dSST.csv")
+
+head(nasa_data)
+```
+
+
+```{r}
+temp <- nasa_data |>
+  select(Year, Jan:Dec) |>
+  pivot_longer(
+    cols = Jan:Dec,
+    names_to = "month",
+    values_to = "anomaly"
+  ) |>
+  mutate(
+    month = factor(month, levels = month.abb),
+    date = as.Date(
+      paste(Year, month, "01", sep = "-"),
+      format = "%Y-%b-%d"
+    )
+  ) |>
+  drop_na(anomaly)
+
+head(temp, n = 12)
+```
+
+# My Data Art
+
+I'll create a visual expression of the data in order to communicate there is global warming. I've put months on the X axis and years on the Y axis, having time passing from top to bottom.
+
+The lines are drawn in segments, one for each month, with a different color depending on the temperature anomaly and a slightly different y again depending on the anomaly.
+
+I've drawn lines with a high width (25.6) and a low alpha (0.18) in order to fill the image and overlap the values a bit, expressing the anomaly and temperature as a continuous value that influence the whole environment all the time.
+
+I like the resulting rectangle that resembles oil painting and impressionism a bit, an artistic movement that used colors and shades to express feelings rather than real photorealistic scenes. My main goal was to make the viewer feel the danger we're running into by the damage of global warming.
+
+```{r}
+temp_smooth <- temp |>
+  arrange(Year, month) |>
+  group_by(Year) |>
+  mutate(
+    month_num = as.numeric(month),
+    smooth_anom = as.numeric(loess(anomaly ~ month_num)$fitted)
+  ) |>
+  ungroup()
+
+p <- ggplot(arrange(temp, Year), aes(x = month, y = Year + anomaly * 20, color = anomaly)) +
+  geom_line(aes(group = Year), linewidth = 25.6, alpha = 0.18) +
+  scale_color_gradient2(low = "blue", mid = "gray85", high = "red",
+                        midpoint = 0, name = "Anomaly (°C)") +
+  labs(x = "Month", y = "Year",
+       title = "Global warming: monthly anomaly as a painting") +
+  scale_y_reverse() +
+  theme_minimal(base_size = 14) +
+  theme(panel.grid = element_blank(),
+        legend.position = "right")
+
+ggsave("global_warming_waves.png", p, width = 14, height = 10, dpi = 300)
+
+p
+```
