@@ -100,7 +100,8 @@ p <- ggplot(arrange(temp, Year), aes(x = month, y = Year + anomaly * 20, color =
   scale_color_gradient2(low = "blue", mid = "gray85", high = "red",
                         midpoint = 0, name = "Anomaly (°C)") +
   labs(x = "Month", y = "Year",
-       title = "Global warming: monthly anomaly as a painting") +
+       title = "Global warming: monthly anomaly as a painting",
+       subtitle = "The rise of temperatures as a warn message") +
   scale_y_reverse() +
   theme_minimal(base_size = 14) +
   theme(panel.grid = element_blank(),
